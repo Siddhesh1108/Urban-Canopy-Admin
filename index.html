@@ -18,8 +18,11 @@
     
     <div class="login-left">
       <div class="login-left-content">
-        <div style="background: rgba(255,255,255,0.1); width: 64px; height: 64px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; margin-bottom: 32px;">
-          <i class="ph ph-shield-check"></i>
+        <div style="width: 64px; height: 64px; margin-bottom: 32px; display: flex; align-items: center; justify-content: center; position: relative;">
+          <div style="background: rgba(255,255,255,0.1); width: 100%; height: 100%; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 32px; position: absolute; z-index: 1;">
+            <i class="ph ph-shield-check"></i>
+          </div>
+          <img src="assets/logo.png" alt="Site Monitor Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; position: absolute; z-index: 2;" onerror="this.style.display='none'" />
         </div>
         <h1>Municipal Construction Safety Monitor</h1>
         <p>A centralized platform for civic officials and NGO partner organizations to track, manage, and resolve urban safety violations in real time.</p>
@@ -41,7 +44,7 @@
           <button class="login-tab" onclick="switchLoginTab('ngo', this)">NGO Partner</button>
         </div>
 
-        <form action="dashboard.html" method="GET" id="auth-form">
+        <form id="auth-form">
           <div class="form-group" id="name-group" style="display: none;">
             <label>Full Name</label>
             <input type="text" class="form-input" id="name-input" placeholder="e.g. Jane Doe" />
@@ -68,8 +71,11 @@
 
   </div>
 
-  <script>
-    function switchLoginTab(type, element) {
+  <script type="module">
+    import { auth } from './firebase-config.js';
+    import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js';
+
+    window.switchLoginTab = function(type, element) {
       document.querySelectorAll('.login-tab').forEach(t => t.classList.remove('active'));
       element.classList.add('active');
       
@@ -88,10 +94,10 @@
         emailInput.value = '111@example.com';
         pwdInput.value = '11111111';
       }
-    }
+    };
 
     let isSignup = false;
-    function toggleAuthMode(e) {
+    window.toggleAuthMode = function(e) {
       e.preventDefault();
       isSignup = !isSignup;
       
@@ -120,7 +126,36 @@
         switchText.innerText = 'Don\'t have an account?';
         switchLink.innerText = 'Sign up here';
       }
-    }
+    };
+
+    // Firebase Auth Interception
+    const authForm = document.getElementById('auth-form');
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.querySelector('input[type="email"]').value;
+      const password = document.querySelector('input[type="password"]').value;
+      const submitBtn = document.getElementById('auth-submit-btn');
+      
+      submitBtn.disabled = true;
+      submitBtn.innerText = "Authenticating...";
+
+      try {
+        if (isSignup) {
+          // Attempt Firebase Signup
+          await createUserWithEmailAndPassword(auth, email, password);
+          window.location.href = "dashboard.html";
+        } else {
+          // Attempt Firebase Login
+          await signInWithEmailAndPassword(auth, email, password);
+          window.location.href = "dashboard.html";
+        }
+      } catch (error) {
+        console.error("Auth Error", error);
+        alert(error.message);
+        submitBtn.disabled = false;
+        submitBtn.innerText = isSignup ? 'Create Account' : 'Sign In to Dashboard';
+      }
+    });
   </script>
 </body>
 </html>

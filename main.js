@@ -1,3 +1,6 @@
+import { db } from './firebase-config.js';
+import { collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
+
 document.addEventListener('DOMContentLoaded', () => {
 
   // --- SPA Navigation Logic ---
@@ -225,13 +228,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const alertIcon = L.divIcon({ className: 'custom-div-icon', html: alertIconHtml, iconSize: [14, 14], iconAnchor: [7, 7] });
     const unitIcon = L.divIcon({ className: 'custom-div-icon', html: unitIconHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
 
-    const complaints = [
-      [40.7228, -74.0060], [40.7100, -74.0150], [40.7300, -73.9900], [40.7050, -74.0100], [40.7150, -73.9950]
-    ];
-
-    complaints.forEach((coord, i) => {
-      L.marker(coord, { icon: alertIcon }).addTo(map).bindPopup(`<b>Complaint #${400 + i}</b><br>Unsafe conditions reported.`);
-    });
+    // Fetch live complaints from Firebase
+    const loadFirebaseMapMarkers = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "complaints"));
+        // If collection exists, plot the markers
+        if (!querySnapshot.empty) {
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.lat && data.lng) {
+              L.marker([data.lat, data.lng], { icon: alertIcon }).addTo(map)
+                .bindPopup(`<b>Complaint ID: ${doc.id.substring(0, 5).toUpperCase()}</b><br>${data.description || "Unsafe conditions reported."}`);
+            }
+          });
+        } else {
+           throw new Error("No reports initialized in Firebase");
+        }
+      } catch (err) {
+        console.warn("Firestore collection unavailable, loading mock bounds:", err.message);
+        const complaints = [ [40.7228, -74.0060], [40.7100, -74.0150], [40.7300, -73.9900], [40.7050, -74.0100], [40.7150, -73.9950] ];
+        complaints.forEach((coord, i) => {
+          L.marker(coord, { icon: alertIcon }).addTo(map).bindPopup(`<b>Complaint #${400 + i}</b><br>Unsafe conditions reported.`);
+        });
+      }
+    };
+    loadFirebaseMapMarkers();
 
     const units = [ [40.7180, -74.0020], [40.7250, -73.9950], [40.7080, -74.0120] ];
 
@@ -300,37 +321,64 @@ document.addEventListener('DOMContentLoaded', () => {
       zoomToBoundsOnClick: true
     });
 
-    // Generate Dummy Data for Map
-    const dataPoints = [
-      { coord: [40.7228, -74.0060], type: 'high', title: 'No Green Net', status: 'high-risk', id: '#CMP-8842', image: 'assets/violation1.png' },
-      { coord: [40.7100, -74.0150], type: 'pending', title: 'Unsafe Structure', status: 'pending', id: '#CMP-8840', image: 'assets/violation2.png' },
-      { coord: [40.7300, -73.9900], type: 'investigating', title: 'No Worker Safety Gear', status: 'under-investigation', id: '#CMP-8839', image: 'assets/violation1.png' },
-      { coord: [40.7050, -74.0100], type: 'resolved', title: 'Permit Issues', status: 'resolved', id: '#CMP-8830', image: 'assets/violation2.png' },
-      { coord: [40.7150, -73.9950], type: 'high', title: 'No Green Net', status: 'high-risk', id: '#CMP-8846', image: 'assets/violation1.png' },
-      { coord: [40.7400, -73.9800], type: 'pending', title: 'Dumpster on Sidewalk', status: 'pending', id: '#CMP-8850', image: 'assets/violation2.png' },
-      { coord: [40.7200, -74.0100], type: 'high', title: 'Falling Debris Risk', status: 'high-risk', id: '#CMP-8851', image: 'assets/violation1.png' }
-    ];
-
     const heatLayerData = [];
 
-    dataPoints.forEach(pt => {
-      heatLayerData.push([...pt.coord, pt.type === 'high' ? 1 : 0.5]);
-      const marker = L.marker(pt.coord, { icon: icons[pt.type] });
-      
-      const popupHtml = `
-        <div class="popup-header">
-          <span class="popup-id">${pt.id}</span>
-          <span class="popup-status ${pt.status}">${pt.status.replace('-', ' ')}</span>
-        </div>
-        <img src="${pt.image}" class="popup-image" alt="Evidence" onerror="this.src='https://placehold.co/240x120?text=No+Image'" />
-        <div class="popup-detail"><i class="ph ph-warning-circle"></i> <span>${pt.title}</span></div>
-        <div class="popup-detail"><i class="ph ph-map-pin"></i> <span>Location specific data</span></div>
-        <div class="popup-detail"><i class="ph ph-calendar"></i> <span>Oct 12, 2026</span></div>
-        <button class="btn btn-primary w-full popup-btn"><i class="ph ph-user-plus"></i> Assign Inspector</button>
-      `;
-      marker.bindPopup(popupHtml, { className: 'custom-popup' });
-      markers.addLayer(marker);
-    });
+    const loadFullMapMarkers = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "complaints"));
+        if (!querySnapshot.empty) {
+          querySnapshot.forEach((doc) => {
+            const pt = doc.data();
+            if (pt.lat && pt.lng) {
+              const type = pt.type || 'investigating';
+              const status = pt.status || 'under-investigation';
+              heatLayerData.push([pt.lat, pt.lng, type === 'high' ? 1 : 0.5]);
+              const marker = L.marker([pt.lat, pt.lng], { icon: icons[type] || icons['pending'] });
+              
+              const popupHtml = `
+                <div class="popup-header">
+                  <span class="popup-id">${doc.id.substring(0, 7).toUpperCase()}</span>
+                  <span class="popup-status ${status}">${status.replace('-', ' ')}</span>
+                </div>
+                <img src="${pt.image || 'assets/violation1.png'}" class="popup-image" alt="Evidence" onerror="this.src='https://placehold.co/240x120?text=No+Image'" />
+                <div class="popup-detail"><i class="ph ph-warning-circle"></i> <span>${pt.title || 'Unsafe Report'}</span></div>
+                <div class="popup-detail"><i class="ph ph-map-pin"></i> <span>Live location pinned</span></div>
+                <button class="btn btn-primary w-full popup-btn"><i class="ph ph-user-plus"></i> Assign Inspector</button>
+              `;
+              marker.bindPopup(popupHtml, { className: 'custom-popup' });
+              markers.addLayer(marker);
+            }
+          });
+        } else {
+           throw new Error("Empty DB");
+        }
+      } catch (err) {
+        console.warn("Full map using dummy markers", err);
+        const dataPoints = [
+          { coord: [40.7228, -74.0060], type: 'high', title: 'No Green Net', status: 'high-risk', id: '#CMP-8842', image: 'assets/violation1.png' },
+          { coord: [40.7100, -74.0150], type: 'pending', title: 'Unsafe Structure', status: 'pending', id: '#CMP-8840', image: 'assets/violation2.png' },
+          { coord: [40.7300, -73.9900], type: 'investigating', title: 'No Worker Safety Gear', status: 'under-investigation', id: '#CMP-8839', image: 'assets/violation1.png' },
+          { coord: [40.7050, -74.0100], type: 'resolved', title: 'Permit Issues', status: 'resolved', id: '#CMP-8830', image: 'assets/violation2.png' }
+        ];
+        dataPoints.forEach(pt => {
+          heatLayerData.push([...pt.coord, pt.type === 'high' ? 1 : 0.5]);
+          const marker = L.marker(pt.coord, { icon: icons[pt.type] });
+          const popupHtml = `
+            <div class="popup-header">
+              <span class="popup-id">${pt.id}</span>
+              <span class="popup-status ${pt.status}">${pt.status.replace('-', ' ')}</span>
+            </div>
+            <img src="${pt.image}" class="popup-image" alt="Evidence" />
+            <div class="popup-detail"><i class="ph ph-warning-circle"></i> <span>${pt.title}</span></div>
+            <button class="btn btn-primary w-full popup-btn"><i class="ph ph-user-plus"></i> Assign Inspector</button>
+          `;
+          marker.bindPopup(popupHtml, { className: 'custom-popup' });
+          markers.addLayer(marker);
+        });
+      }
+      fullMap.addLayer(markers);
+    };
+    loadFullMapMarkers();
 
     fullMap.addLayer(markers);
 
