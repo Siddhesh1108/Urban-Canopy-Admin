@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   
-  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -51,11 +51,11 @@
           </div>
           <div class="form-group">
             <label id="lbl-email">Department Email</label>
-            <input type="email" class="form-input" placeholder="e.g. name@department.gov" value="000@example.com" required />
+            <input type="email" class="form-input" placeholder="e.g. name@department.gov" required />
           </div>
           <div class="form-group">
             <label>Password / Access Key</label>
-            <input type="password" class="form-input" placeholder="Enter secure password" value="00000000" required />
+            <input type="password" class="form-input" placeholder="Enter secure password" required />
           </div>
           
           <button type="submit" class="login-btn-submit" id="auth-submit-btn">Sign In to Dashboard</button>
@@ -81,18 +81,13 @@
       
       const emailLabel = document.getElementById('lbl-email');
       const emailInput = document.querySelector('input[type="email"]');
-      const pwdInput = document.querySelector('input[type="password"]');
       
       if (type === 'gov') {
         emailLabel.innerText = 'Department Email';
         emailInput.placeholder = 'e.g. name@department.gov';
-        emailInput.value = '000@example.com';
-        pwdInput.value = '00000000';
       } else {
         emailLabel.innerText = 'NGO Partner Email';
         emailInput.placeholder = 'e.g. name@partner-ngo.org';
-        emailInput.value = '111@example.com';
-        pwdInput.value = '11111111';
       }
     };
 
@@ -151,7 +146,18 @@
         }
       } catch (error) {
         console.error("Auth Error", error);
-        alert(error.message);
+        const errorCode = error?.code || '';
+        let userMessage = 'Authentication failed. Please check your details and try again.';
+
+        if (errorCode === 'auth/invalid-email') {
+          userMessage = 'Please enter a valid email address.';
+        } else if (isSignup && errorCode === 'auth/email-already-in-use') {
+          userMessage = 'An account already exists for this email.';
+        } else if (!isSignup && (errorCode === 'auth/user-not-found' || errorCode === 'auth/wrong-password' || errorCode === 'auth/invalid-credential')) {
+          userMessage = 'Invalid email or password.';
+        }
+
+        alert(userMessage);
         submitBtn.disabled = false;
         submitBtn.innerText = isSignup ? 'Create Account' : 'Sign In to Dashboard';
       }

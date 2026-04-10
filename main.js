@@ -1,7 +1,32 @@
 import { db } from './firebase-config.js';
-import { collection, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
+import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
 
 document.addEventListener('DOMContentLoaded', () => {
+
+  const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;'
+  }[char]));
+
+  const sanitizeClassToken = (value, fallback = 'pending') => {
+    const token = String(value ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    return token || fallback;
+  };
+
+  const getSafeImageUrl = (value, fallback = 'assets/violation1.png') => {
+    const raw = String(value ?? '').trim();
+    if (!raw) return fallback;
+
+    try {
+      const parsed = new URL(raw, window.location.href);
+      return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : fallback;
+    } catch {
+      return fallback;
+    }
+  };
 
   // --- SPA Navigation Logic ---
   const navItems = document.querySelectorAll('.sidebar-nav a[data-target], .sidebar-footer a[data-target]');
@@ -237,8 +262,10 @@ document.addEventListener('DOMContentLoaded', () => {
           querySnapshot.forEach((doc) => {
             const data = doc.data();
             if (data.lat && data.lng) {
+              const safeId = escapeHtml(doc.id.substring(0, 5).toUpperCase());
+              const safeDescription = escapeHtml(data.description || "Unsafe conditions reported.");
               L.marker([data.lat, data.lng], { icon: alertIcon }).addTo(map)
-                .bindPopup(`<b>Complaint ID: ${doc.id.substring(0, 5).toUpperCase()}</b><br>${data.description || "Unsafe conditions reported."}`);
+                .bindPopup(`<b>Complaint ID: ${safeId}</b><br>${safeDescription}`);
             }
           });
         } else {
@@ -330,18 +357,23 @@ document.addEventListener('DOMContentLoaded', () => {
           querySnapshot.forEach((doc) => {
             const pt = doc.data();
             if (pt.lat && pt.lng) {
-              const type = pt.type || 'investigating';
-              const status = pt.status || 'under-investigation';
+              const type = sanitizeClassToken(pt.type || 'investigating', 'investigating');
+              const statusClass = sanitizeClassToken(pt.status || 'under-investigation', 'pending');
+              const statusText = escapeHtml(String(pt.status || 'under-investigation').replace('-', ' '));
+              const safeImage = escapeHtml(getSafeImageUrl(pt.image || 'assets/violation1.png', 'assets/violation1.png'));
+              const safeTitle = escapeHtml(pt.title || 'Unsafe Report');
+              const safeId = escapeHtml(doc.id.substring(0, 7).toUpperCase());
+
               heatLayerData.push([pt.lat, pt.lng, type === 'high' ? 1 : 0.5]);
               const marker = L.marker([pt.lat, pt.lng], { icon: icons[type] || icons['pending'] });
               
               const popupHtml = `
                 <div class="popup-header">
-                  <span class="popup-id">${doc.id.substring(0, 7).toUpperCase()}</span>
-                  <span class="popup-status ${status}">${status.replace('-', ' ')}</span>
+                  <span class="popup-id">${safeId}</span>
+                  <span class="popup-status ${statusClass}">${statusText}</span>
                 </div>
-                <img src="${pt.image || 'assets/violation1.png'}" class="popup-image" alt="Evidence" onerror="this.src='https://placehold.co/240x120?text=No+Image'" />
-                <div class="popup-detail"><i class="ph ph-warning-circle"></i> <span>${pt.title || 'Unsafe Report'}</span></div>
+                <img src="${safeImage}" class="popup-image" alt="Evidence" onerror="this.src='https://placehold.co/240x120?text=No+Image'" />
+                <div class="popup-detail"><i class="ph ph-warning-circle"></i> <span>${safeTitle}</span></div>
                 <div class="popup-detail"><i class="ph ph-map-pin"></i> <span>Live location pinned</span></div>
                 <button class="btn btn-primary w-full popup-btn"><i class="ph ph-user-plus"></i> Assign Inspector</button>
               `;
@@ -361,15 +393,21 @@ document.addEventListener('DOMContentLoaded', () => {
           { coord: [40.7050, -74.0100], type: 'resolved', title: 'Permit Issues', status: 'resolved', id: '#CMP-8830', image: 'assets/violation2.png' }
         ];
         dataPoints.forEach(pt => {
+          const safeStatusClass = sanitizeClassToken(pt.status, 'pending');
+          const safeStatusText = escapeHtml(String(pt.status).replace('-', ' '));
+          const safeTitle = escapeHtml(pt.title);
+          const safeImage = escapeHtml(getSafeImageUrl(pt.image, 'assets/violation1.png'));
+          const safeId = escapeHtml(pt.id);
+
           heatLayerData.push([...pt.coord, pt.type === 'high' ? 1 : 0.5]);
           const marker = L.marker(pt.coord, { icon: icons[pt.type] });
           const popupHtml = `
             <div class="popup-header">
-              <span class="popup-id">${pt.id}</span>
-              <span class="popup-status ${pt.status}">${pt.status.replace('-', ' ')}</span>
+              <span class="popup-id">${safeId}</span>
+              <span class="popup-status ${safeStatusClass}">${safeStatusText}</span>
             </div>
-            <img src="${pt.image}" class="popup-image" alt="Evidence" />
-            <div class="popup-detail"><i class="ph ph-warning-circle"></i> <span>${pt.title}</span></div>
+            <img src="${safeImage}" class="popup-image" alt="Evidence" />
+            <div class="popup-detail"><i class="ph ph-warning-circle"></i> <span>${safeTitle}</span></div>
             <button class="btn btn-primary w-full popup-btn"><i class="ph ph-user-plus"></i> Assign Inspector</button>
           `;
           marker.bindPopup(popupHtml, { className: 'custom-popup' });
